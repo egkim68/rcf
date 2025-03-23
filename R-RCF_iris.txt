@@ -1,0 +1,429 @@
+# RCF Partitioning & Transformation Analysis on Iris Dataset
+# Author: Eungi Kim
+# Description: Code for region-based partitioning, density analysis, visualizations, and transformation metrics.
+
+# ============================================================
+# 1. SETUP
+# ============================================================
+library(dplyr)
+library(ggplot2)
+library(tidyr)
+library(patchwork)
+
+# Load dataset
+df <- iris
+cuts_per_axis <- 4
+
+# ============================================================
+# 2. REGION PARTITIONING FUNCTION
+# ============================================================
+partition_points <- function(df, x_col, y_col, num_regions = 16, mode = "absolute") {
+  cuts_per_axis <- sqrt(num_regions)
+  if (mode == "absolute") {
+    x_cuts <- seq(0, max(df[[x_col]]), length.out = cuts_per_axis + 1)
+    y_cuts <- seq(0, max(df[[y_col]]), length.out = cuts_per_axis + 1)
+  } else {
+    df[[x_col]] <- (df[[x_col]] - min(df[[x_col]])) / (max(df[[x_col]]) - min(df[[x_col]]))
+    df[[y_col]] <- (df[[y_col]] - min(df[[y_col]])) / (max(df[[y_col]]) - min(df[[y_col]]))
+    x_cuts <- seq(0, 1, length.out = cuts_per_axis + 1)
+    y_cuts <- seq(0, 1, length.out = cuts_per_axis + 1)
+  }
+  df %>%
+    mutate(
+      x_region = cut(df[[x_col]], breaks = x_cuts, labels = FALSE, include.lowest = TRUE),
+      y_region = cut(df[[y_col]], breaks = y_cuts, labels = FALSE, include.lowest = TRUE)
+    )
+}
+
+
+# ============================================================
+# 3. VISUALIZATION OF PARTITIONS
+# ============================================================
+# Function to calculate grid centers
+calculate_grid_centers <- function(x_col, y_col, data, normalized = FALSE) {
+  if (normalized) {
+    # Normalize the columns to [0, 1]
+    data <- data %>%
+      mutate(
+        !!x_col := (.[[x_col]] - min(.[[x_col]])) / (max(.[[x_col]]) - min(.[[x_col]])),
+        !!y_col := (.[[y_col]] - min(.[[y_col]])) / (max(.[[y_col]]) - min(.[[y_col]]))
+      )
+    x_seq <- seq(0, 1, length.out = 5)
+    y_seq <- seq(0, 1, length.out = 5)
+  } else {
+    # Absolute mode: Start from 0
+    x_seq <- seq(0, max(data[[x_col]], na.rm = TRUE), length.out = 5)
+    y_seq <- seq(0, max(data[[y_col]], na.rm = TRUE), length.out = 5)
+  }
+  
+  # Calculate the grid centers
+  expand.grid(
+    x = x_seq[-length(x_seq)],
+    y = y_seq[-length(y_seq)]
+  ) %>%
+    mutate(
+      x = x + diff(x_seq)[1] / 2,
+      y = y + diff(y_seq)[1] / 2,
+      region = paste0("R(", rep(1:4, each = 4), ",", rep(1:4, times = 4), ")")
+    )
+}
+
+# Custom theme for cleaner visuals with larger legend
+custom_theme <- theme_minimal() +
+  theme(
+    axis.title = element_text(size = 14),
+    axis.text = element_text(size = 12),
+    plot.title = element_text(size = 16),
+    axis.title.x = element_text(margin = margin(t = 10)),
+    axis.title.y = element_text(margin = margin(r = 10)),
+    legend.title = element_text(size = 16),
+    legend.text = element_text(size = 14),
+    legend.key.size = unit(1.5, "lines")
+  )
+
+# Sepal Absolute Plot
+grid_centers_sepal_absolute <- calculate_grid_centers("Sepal.Length", "Sepal.Width", df)
+plot_sepal_absolute <- ggplot(df, aes(x = Sepal.Length, y = Sepal.Width)) +
+  geom_point(aes(color = Species), size = 2, alpha = 0.7) +
+  geom_vline(xintercept = seq(0, max(df$Sepal.Length), length.out = 5), linetype = "dashed", color = "gray90", alpha = 0.7) +
+  geom_hline(yintercept = seq(0, max(df$Sepal.Width), length.out = 5), linetype = "dashed", color = "gray90", alpha = 0.7) +
+  geom_text(data = grid_centers_sepal_absolute, aes(x = x, y = y, label = region), alpha = 0.5, size = 4) +
+  labs(title = "A. Sepal Absolute Partitioning", x = "Sepal Length (cm)", y = "Sepal Width (cm)") +
+  custom_theme +
+  guides(color = "none")
+
+# Sepal Normalized Plot
+grid_centers_sepal_normalized <- calculate_grid_centers("Sepal.Length", "Sepal.Width", df, normalized = TRUE)
+plot_sepal_normalized <- ggplot(df, aes(x = (Sepal.Length - min(Sepal.Length)) / (max(Sepal.Length) - min(Sepal.Length)),
+                                        y = (Sepal.Width - min(Sepal.Width)) / (max(Sepal.Width) - min(Sepal.Width)))) +
+  geom_point(aes(color = Species), size = 2, alpha = 0.7) +
+  geom_vline(xintercept = seq(0, 1, length.out = 5), linetype = "dashed", color = "gray90", alpha = 0.7) +
+  geom_hline(yintercept = seq(0, 1, length.out = 5), linetype = "dashed", color = "gray90", alpha = 0.7) +
+  geom_text(data = grid_centers_sepal_normalized, aes(x = x, y = y, label = region), alpha = 0.5, size = 4) +
+  labs(title = "Sepal Relative Partitioning", x = "Sepal Length (Normalized)", y = "Sepal Width (Normalized)") +
+  custom_theme +
+  guides(color = "none")
+
+# Petal Absolute Plot
+grid_centers_petal_absolute <- calculate_grid_centers("Petal.Length", "Petal.Width", df)
+plot_petal_absolute <- ggplot(df, aes(x = Petal.Length, y = Petal.Width)) +
+  geom_point(aes(color = Species), size = 2, alpha = 0.7) +
+  geom_vline(xintercept = seq(0, max(df$Petal.Length), length.out = 5), linetype = "dashed", color = "gray90", alpha = 0.7) +
+  geom_hline(yintercept = seq(0, max(df$Petal.Width), length.out = 5), linetype = "dashed", color = "gray90", alpha = 0.7) +
+  geom_text(data = grid_centers_petal_absolute, aes(x = x, y = y, label = region), alpha = 0.5, size = 4) +
+  labs(title = "\nC. Petal Absolute Partitioning", x = "Petal Length (cm)", y = "Petal Width (cm)") +
+  custom_theme +
+  guides(color = "none")
+
+# Petal Normalized Plot
+grid_centers_petal_normalized <- calculate_grid_centers("Petal.Length", "Petal.Width", df, normalized = TRUE)
+plot_petal_normalized <- ggplot(df, aes(x = (Petal.Length - min(Petal.Length)) / (max(Petal.Length) - min(Petal.Length)),
+                                        y = (Petal.Width - min(Petal.Width)) / (max(Petal.Width) - min(Petal.Width)))) +
+  geom_point(aes(color = Species), size = 2, alpha = 0.7) +
+  geom_vline(xintercept = seq(0, 1, length.out = 5), linetype = "dashed", color = "gray90", alpha = 0.7) +
+  geom_hline(yintercept = seq(0, 1, length.out = 5), linetype = "dashed", color = "gray90", alpha = 0.7) +
+  geom_text(data = grid_centers_petal_normalized, aes(x = x, y = y, label = region), alpha = 0.5, size = 4) +
+  labs(title = "\nPetal Relative Partitioning", x = "Petal Length (Normalized)", y = "Petal Width (Normalized)") +
+  custom_theme
+
+# Combine all four plots
+combined_plot <- (plot_sepal_absolute + plot_sepal_normalized) /
+                 (plot_petal_absolute + plot_petal_normalized) +
+                 plot_layout(guides = "collect")
+
+# Display the combined plot
+print(combined_plot)
+
+# ============================================================
+# 4. GENERATE PARTITIONED DATA
+# ============================================================
+
+# Absolute and Normalized (for Sepal and Petal)
+sepal_absolute <- partition_points(df, "Sepal.Length", "Sepal.Width", mode = "absolute")
+petal_absolute <- partition_points(df, "Petal.Length", "Petal.Width", mode = "absolute")
+sepal_normalized <- partition_points(df, "Sepal.Length", "Sepal.Width", mode = "normalized")
+petal_normalized <- partition_points(df, "Petal.Length", "Petal.Width", mode = "normalized")
+
+# Merge into final datasets
+absolute_data <- df %>%
+  mutate(
+    x_region_sepal = sepal_absolute$x_region,
+    y_region_sepal = sepal_absolute$y_region,
+    x_region_petal = petal_absolute$x_region,
+    y_region_petal = petal_absolute$y_region
+  )
+
+normalized_data <- df %>%
+  mutate(
+    x_region_sepal = sepal_normalized$x_region,
+    y_region_sepal = sepal_normalized$y_region,
+    x_region_petal = petal_normalized$x_region,
+    y_region_petal = petal_normalized$y_region
+  )
+
+# ============================================================
+# 5. DENSITY ANALYSIS & HEATMAP VISUALIZATION
+# ============================================================
+# Function to ensure all region combinations exist, filling missing densities with 0
+complete_density_data <- function(data, cuts_per_axis) {
+  all_regions <- expand.grid(
+    x_region = 1:cuts_per_axis,
+    y_region = 1:cuts_per_axis
+  )
+  
+  data <- all_regions %>%
+    left_join(data, by = c("x_region", "y_region")) %>%
+    mutate(count = ifelse(is.na(count), 0, count))
+  
+  return(data)
+}
+
+# Function to compute raw density
+calculate_raw_density <- function(data, region_x, region_y, cuts_per_axis) {
+  data %>%
+    count(!!sym(region_x), !!sym(region_y), name = "count") %>%
+    rename(x_region = !!sym(region_x), y_region = !!sym(region_y)) %>%
+    complete_density_data(., cuts_per_axis)
+}
+
+# Compute raw density for Sepal and Petal (Absolute & Normalized)
+absolute_raw_density_sepal <- calculate_raw_density(absolute_data, "x_region_sepal", "y_region_sepal", 4)
+normalized_raw_density_sepal <- calculate_raw_density(normalized_data, "x_region_sepal", "y_region_sepal", 4)
+
+absolute_raw_density_petal <- calculate_raw_density(absolute_data, "x_region_petal", "y_region_petal", 4)
+normalized_raw_density_petal <- calculate_raw_density(normalized_data, "x_region_petal", "y_region_petal", 4)
+
+# Normalize density values
+normalize_density <- function(data) {
+  data %>%
+    mutate(count = count / max(count, na.rm = TRUE))
+}
+
+absolute_density_sepal <- normalize_density(absolute_raw_density_sepal)
+normalized_density_sepal <- normalize_density(normalized_raw_density_sepal)
+absolute_density_petal <- normalize_density(absolute_raw_density_petal)
+normalized_density_petal <- normalize_density(normalized_raw_density_petal)
+
+# Function to create heatmaps
+# Function to create heatmaps with larger axis font size
+create_tile_heatmap <- function(data, title, x_label, y_label) {
+  ggplot(data, aes(x = factor(x_region), y = factor(y_region), fill = count)) +
+    geom_tile(color = "white") +
+    scale_fill_gradient(low = "white", high = "red") +
+    labs(title = title, x = x_label, y = y_label, fill = "Density") +
+    theme_minimal() +
+    theme(
+      axis.text.x = element_text(size = 14, vjust = 0.5, hjust = 1),  # **Increased font size**
+      axis.text.y = element_text(size = 14),  # **Increased font size**
+      axis.title.x = element_text(size = 16),
+      axis.title.y = element_text(size = 16),
+      plot.title = element_text(size = 18),
+      legend.title = element_text(size = 14),
+      legend.text = element_text(size = 12)
+    )
+}
+
+
+# Generate heatmaps for Sepal and Petal densities (Absolute & Normalized)
+heatmap_absolute_sepal <- create_tile_heatmap(absolute_density_sepal, "Sepal Region Density (Absolute)", "X-axis Region (Sepal)", "Y-axis Region (Sepal)")
+heatmap_normalized_sepal <- create_tile_heatmap(normalized_density_sepal, "Sepal Region Density (Normalized)", "X-axis Region (Sepal)", "Y-axis Region (Sepal)")
+
+heatmap_absolute_petal <- create_tile_heatmap(absolute_density_petal, "\nPetal Region Density (Absolute)", "X-axis Region (Petal)", "Y-axis Region (Petal)")
+heatmap_normalized_petal <- create_tile_heatmap(normalized_density_petal, "\nPetal Region Density (Normalized)", "X-axis Region (Petal)", "Y-axis Region (Petal)")
+
+# Combine heatmaps into one visualization
+combined_density_plot <- (heatmap_absolute_sepal | heatmap_normalized_sepal) /
+                         (heatmap_absolute_petal | heatmap_normalized_petal)
+
+# Display the final heatmap plot
+print(combined_density_plot)
+
+# ============================================================
+# 6. REGION CHARACTERISTICS
+# ============================================================
+# Function to summarize data based on region and add characteristics
+summarize_regions_with_characteristics <- function(data, x_col, y_col, region_x, region_y, characteristics) {
+  # Create all possible regions
+  all_regions <- expand.grid(
+    x = 1:4,
+    y = 1:4
+  ) %>%
+    mutate(region = paste0("R(", x, ",", y, ")")) %>%
+    select(region)
+  
+  # Combine x and y region into a single region column
+  data <- data %>%
+    mutate(region = paste0("R(", !!sym(region_x), ",", !!sym(region_y), ")"))
+  
+  # Summarize the data
+  summary <- data %>%
+    group_by(region) %>%
+    summarize(
+      count = n(),
+      mean_x = mean(!!sym(x_col), na.rm = TRUE),
+      mean_y = mean(!!sym(y_col), na.rm = TRUE),
+      density = n() / nrow(data),
+      .groups = "drop"
+    ) %>%
+    right_join(all_regions, by = "region") %>%
+    mutate(
+      count = replace_na(count, 0),
+      mean_x = replace_na(mean_x, 0),
+      mean_y = replace_na(mean_y, 0),
+      density = replace_na(density, 0),
+      Characteristics = characteristics[region]
+    ) %>%
+    arrange(region)
+  
+  return(summary)
+}
+
+# Define characteristics for Sepal regions
+sepal_characteristics <- c(
+  "R(1,1)" = "Very short sepal length, very narrow sepal width",
+  "R(2,1)" = "Short sepal length, very narrow sepal width",
+  "R(3,1)" = "Medium sepal length, very narrow sepal width",
+  "R(4,1)" = "Long sepal length, very narrow sepal width",
+  "R(1,2)" = "Very short sepal length, narrow sepal width",
+  "R(2,2)" = "Short sepal length, narrow sepal width",
+  "R(3,2)" = "Medium sepal length, narrow sepal width",
+  "R(4,2)" = "Long sepal length, narrow sepal width",
+  "R(1,3)" = "Very short sepal length, medium sepal width",
+  "R(2,3)" = "Short sepal length, medium sepal width",
+  "R(3,3)" = "Medium sepal length, medium sepal width",
+  "R(4,3)" = "Long sepal length, medium sepal width",
+  "R(1,4)" = "Very short sepal length, wide sepal width",
+  "R(2,4)" = "Short sepal length, wide sepal width",
+  "R(3,4)" = "Medium sepal length, wide sepal width",
+  "R(4,4)" = "Long sepal length, wide sepal width"
+)
+
+# Define characteristics for Petal regions
+petal_characteristics <- c(
+  "R(1,1)" = "Very short petal length, very narrow petal width",
+  "R(2,1)" = "Short petal length, very narrow petal width",
+  "R(3,1)" = "Medium petal length, very narrow petal width",
+  "R(4,1)" = "Long petal length, very narrow petal width",
+  "R(1,2)" = "Very short petal length, narrow petal width",
+  "R(2,2)" = "Short petal length, narrow petal width",
+  "R(3,2)" = "Medium petal length, narrow petal width",
+  "R(4,2)" = "Long petal length, narrow petal width",
+  "R(1,3)" = "Very short petal length, medium petal width",
+  "R(2,3)" = "Short petal length, medium petal width",
+  "R(3,3)" = "Medium petal length, medium petal width",
+  "R(4,3)" = "Long petal length, medium petal width",
+  "R(1,4)" = "Very short petal length, wide petal width",
+  "R(2,4)" = "Short petal length, wide petal width",
+  "R(3,4)" = "Medium petal length, wide petal width",
+  "R(4,4)" = "Long petal length, wide petal width"
+)
+
+# Summarize for Sepal Absolute
+sepal_absolute_summary <- summarize_regions_with_characteristics(
+  absolute_data, "Sepal.Length", "Sepal.Width", "x_region_sepal", "y_region_sepal", sepal_characteristics
+)
+
+# Summarize for Sepal Normalized
+sepal_normalized_summary <- summarize_regions_with_characteristics(
+  normalized_data, "Sepal.Length", "Sepal.Width", "x_region_sepal", "y_region_sepal", sepal_characteristics
+)
+
+# Summarize for Petal Absolute
+petal_absolute_summary <- summarize_regions_with_characteristics(
+  absolute_data, "Petal.Length", "Petal.Width", "x_region_petal", "y_region_petal", petal_characteristics
+)
+
+# Summarize for Petal Normalized
+petal_normalized_summary <- summarize_regions_with_characteristics(
+  normalized_data, "Petal.Length", "Petal.Width", "x_region_petal", "y_region_petal", petal_characteristics
+)
+
+# Print Summaries
+cat("Sepal Absolute Summary:\n")
+print(sepal_absolute_summary)
+
+cat("\nSepal Normalized Summary:\n")
+print(sepal_normalized_summary)
+
+cat("\nPetal Absolute Summary:\n")
+print(petal_absolute_summary)
+
+cat("\nPetal Normalized Summary:\n")
+print(petal_normalized_summary)
+
+
+# ============================================================
+# 7. DYNAMICS OF CHANGE
+# ============================================================
+# Calculate density and dynamic changes for each region
+calculate_dynamics_of_change <- function(absolute_data, normalized_data, type = "sepal") {
+  # Define the region columns
+  if (type == "sepal") {
+    x_region_abs <- absolute_data$x_region_sepal
+    y_region_abs <- absolute_data$y_region_sepal
+    x_region_norm <- normalized_data$x_region_sepal
+    y_region_norm <- normalized_data$y_region_sepal
+  } else if (type == "petal") {
+    x_region_abs <- absolute_data$x_region_petal
+    y_region_abs <- absolute_data$y_region_petal
+    x_region_norm <- normalized_data$x_region_petal
+    y_region_norm <- normalized_data$y_region_petal
+  } else {
+    stop("Invalid type. Must be 'sepal' or 'petal'.")
+  }
+  
+  # Create region labels
+  absolute_data <- absolute_data %>%
+    mutate(region_absolute = paste0("R(", x_region_abs, ",", y_region_abs, ")"))
+  
+  normalized_data <- normalized_data %>%
+    mutate(region_normalized = paste0("R(", x_region_norm, ",", y_region_norm, ")"))
+  
+  # Create a full grid of possible regions (R(1,1) to R(4,4))
+  all_regions <- expand.grid(x = 1:4, y = 1:4) %>%
+    mutate(region = paste0("R(", x, ",", y, ")")) %>%
+    select(region)
+  
+  # Count points in each region (frequency)
+  absolute_density <- absolute_data %>%
+    group_by(region_absolute) %>%
+    summarise(freq_absolute = n(), .groups = 'drop')
+  
+  normalized_density <- normalized_data %>%
+    group_by(region_normalized) %>%
+    summarise(freq_normalized = n(), .groups = 'drop')
+  
+  # Calculate density
+  total_points <- nrow(absolute_data)  # Total number of points in dataset
+  density_data <- all_regions %>%
+    left_join(absolute_density, by = c("region" = "region_absolute")) %>%
+    left_join(normalized_density, by = c("region" = "region_normalized")) %>%
+	mutate(
+	  freq_absolute = replace_na(freq_absolute, 0),
+	  freq_normalized = replace_na(freq_normalized, 0),
+	  density_absolute = freq_absolute / total_points,
+	  density_normalized = freq_normalized / total_points,
+	  net_flow = freq_normalized - freq_absolute,
+	  relative_change_ratio = (freq_normalized - freq_absolute) / (freq_absolute + 1), 
+	  redistribution_index = abs(freq_normalized - freq_absolute) / (freq_absolute + freq_normalized + 1)
+	)
+
+  
+  return(density_data)
+}
+
+# Calculate changes for sepal and petal
+sepal_dynamics <- calculate_dynamics_of_change(absolute_data, normalized_data, type = "sepal")
+petal_dynamics <- calculate_dynamics_of_change(absolute_data, normalized_data, type = "petal")
+
+# Print the results
+cat("\n=== Sepal Dynamics ===\n")
+print(sepal_dynamics)
+
+cat("\n=== Petal Dynamics ===\n")
+print(petal_dynamics)
+
+# ============================================================
+# 8. FINAL NOTE
+# ============================================================
+cat("✅ All processing complete.\n")
