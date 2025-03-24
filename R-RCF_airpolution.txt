@@ -83,20 +83,17 @@ create_tile_heatmap <- function(data, title, x_label, y_label) {
 # ============================================================
 # 4. VISUALIZATION OF PARTITIONED DENSITY
 # ============================================================
-
 # Generate region heatmaps for Ozone vs. Wind
 ozone_wind_abs <- calculate_density(data, "Wind", "Ozone", "absolute") %>% normalize_density()
 ozone_wind_norm <- calculate_density(data, "Wind", "Ozone", "normalized") %>% normalize_density()
-
 plot_ozone_wind_abs <- create_tile_heatmap(ozone_wind_abs, "A. Ozone vs. Wind (Absolute)", "Wind Region", "Ozone Region")
-plot_ozone_wind_norm <- create_tile_heatmap(ozone_wind_norm, "B. Ozone vs. Wind (Normalized)", "Wind Region", "Ozone Region")
+plot_ozone_wind_norm <- create_tile_heatmap(ozone_wind_norm, "\nB. Ozone vs. Wind (Normalized)", "Wind Region", "Ozone Region")
 
 # Generate region heatmaps for Ozone vs. Temperature
 ozone_temp_abs <- calculate_density(data, "Temp", "Ozone", "absolute") %>% normalize_density()
 ozone_temp_norm <- calculate_density(data, "Temp", "Ozone", "normalized") %>% normalize_density()
-
-plot_ozone_temp_abs <- create_tile_heatmap(ozone_temp_abs, "C. Ozone vs. Temp (Absolute)", "Temp Region", "Ozone Region")
-plot_ozone_temp_norm <- create_tile_heatmap(ozone_temp_norm, "D. Ozone vs. Temp (Normalized)", "Temp Region", "Ozone Region")
+plot_ozone_temp_abs <- create_tile_heatmap(ozone_temp_abs, "\nC. Ozone vs. Temperature (Absolute)", "Temperature Region", "Ozone Region")
+plot_ozone_temp_norm <- create_tile_heatmap(ozone_temp_norm, "\nD. Ozone vs. Temperature (Normalized)", "Temperature Region", "Ozone Region")
 
 # Combine all plots
 combined_plot <- (plot_ozone_wind_abs | plot_ozone_wind_norm) /
